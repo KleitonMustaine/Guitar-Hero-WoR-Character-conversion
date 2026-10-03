@@ -2,8 +2,6 @@
 
 Port **Guitar Hero World Tour: Definitive Edition** character mods to **Guitar Hero: Warriors of Rock** (Xbox 360 / Xenia). You can also edit the textures of the original characters.
 
-*[Leia em português](README.pt-BR.md)*
-
 - **Pure Python 3, no dependencies.**
 - **Works on an extracted copy of the game.** Back it up first.
 - **Tested in Xenia Canary.** A custom GHWT:DE character, with its own custom skeleton, shows up in *Select Rocker* with its own name and description. It also played a guitar song. Other instruments have not been tested yet.
