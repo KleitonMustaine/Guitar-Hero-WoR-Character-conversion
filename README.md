@@ -233,4 +233,3 @@ The *Select Rocker* list comes from `CharacterProfileGetList(savegame)`, so pres
 - **Xbox 360 texture tiling and packed mips:** [Xenia](https://github.com/xenia-project/xenia).
 - **The GHWT:DE and Guitar Hero modding communities.**
 
-Guitar Hero is a trademark of Activision. This is an unofficial fan project, not affiliated with Activision or Neversoft.
