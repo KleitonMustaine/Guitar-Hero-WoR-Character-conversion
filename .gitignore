@@ -1,0 +1,13 @@
+# never publish game data or converted game assets
+*.xen
+*.bak
+*.iso
+*.xex
+*.tex
+*.skin
+*.ske
+*.dds
+*.png
+wor_build/
+__pycache__/
+*.pyc
