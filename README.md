@@ -157,6 +157,12 @@ Self-tests used during development:
 
 These are the findings the tools rely on. They should help anyone modding WoR.
 
+**For the full details, see [docs/TECHNICAL.md](docs/TECHNICAL.md):**
+- how everything was figured out, including the bisection of the boot hangs;
+- why GHWT skeletons work in WoR unchanged;
+- the complete `.ske` and `.skin` specs (bone transforms, vertex packing, weights, block layout);
+- a checklist for writing a Blender exporter or importer.
+
 ### Archives
 
 - **CHNK compression.** Paks in `data\compressed` and the `cas_pieces` archive use it:
