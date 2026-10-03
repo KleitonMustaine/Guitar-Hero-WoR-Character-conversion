@@ -6,8 +6,12 @@
 *.tex
 *.skin
 *.ske
+*.ref
+*.out
+*.chnk
 *.dds
 *.png
+repacker/test/
 wor_build/
 __pycache__/
 *.pyc
