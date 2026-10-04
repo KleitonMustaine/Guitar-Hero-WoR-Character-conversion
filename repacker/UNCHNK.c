@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include "miniz.h"
 
+static int cmp_key(const void *a, const void *b);
+
 #pragma pack(push, 1)
 
 typedef struct 
@@ -20,9 +22,28 @@ typedef struct
 
 #pragma pack(pop)
 
+typedef struct
+{
+    uint32_t crc;
+    char *name;
+}KeyName;
+
+static KeyName *g_keys = NULL;
+static size_t g_keys_count = 0;
+static size_t g_keys_cap = 0;
+
 //converts little endian to big endian
 #define swapEndian32(x) __builtin_bswap32(x)
 
+//reads 4 bytes at p as a big endian number
+static uint32_t be32(const unsigned char *p){
+    return (uint32_t)p[0] << 24 |
+           (uint32_t)p[1] << 16 |
+           (uint32_t)p[2] << 8  |
+           (uint32_t)p[3];
+}
+
+//converts all of these to big endian
 static void header_from_file(CHNKHeader *h){
     h->header_size = swapEndian32(h->header_size);
     h->compressed_size = swapEndian32(h->compressed_size);
@@ -32,6 +53,57 @@ static void header_from_file(CHNKHeader *h){
     h->output_offset = swapEndian32(h->output_offset);
 }
 
+static int cmp_key(const void *a, const void *b)
+{
+    uint32_t x = ((const KeyName *)a)->crc;
+    uint32_t y = ((const KeyName *)b)->crc;
+    return (x > y) - (x < y);
+}
+
+static const char *key_name(uint32_t crc)
+{
+    KeyName k = { crc, NULL };
+    KeyName *r = bsearch(&k, g_keys, g_keys_count, sizeof *g_keys, cmp_key);
+    return r ? r->name : NULL;
+}
+
+int load_keys(const char *path){
+    FILE *file = fopen(path, "r");
+    if(!file){
+        fprintf(stderr, "Failed to open the list\n");
+        return -1;
+    }
+
+    unsigned int crc;
+    char name[1024];
+    char lines[1024];
+
+    while(fgets(lines, sizeof lines, file)){
+        if(sscanf(lines, "%x %1023[^\n]", &crc, name) != 2){
+            continue;
+        }
+        if (g_keys_count == g_keys_cap) {
+            size_t new_cap = g_keys_cap ? g_keys_cap * 2 : 1024;
+            KeyName *tmp = realloc(g_keys, new_cap * sizeof *g_keys);
+            if (tmp == NULL) {
+                fclose(file);
+                return -1;
+            }
+            g_keys = tmp;
+            g_keys_cap = new_cap;
+        }
+        char *n = name;
+        if (strncmp(n, "c:/gh6_burn/data/", 17) == 0)
+            n += 17;
+
+        g_keys[g_keys_count].crc  = crc;
+        g_keys[g_keys_count].name = strdup(n);
+        g_keys_count++;
+    }
+    fclose(file);
+    qsort(g_keys, g_keys_count, sizeof *g_keys, cmp_key);
+    return 0;
+}
 
 
 int decompress_chnk(const char *input_path, const char *output_path){
@@ -51,6 +123,7 @@ int decompress_chnk(const char *input_path, const char *output_path){
     CHNKHeader header;
     unsigned long int current_chnk_pos = 0;
     unsigned int chnk_count = 0;
+    int result = -1;    // becomes 0 only when the last chunk was reached
 
     while(1){
 
@@ -62,7 +135,7 @@ int decompress_chnk(const char *input_path, const char *output_path){
         }
         header_from_file(&header);
         if(memcmp(header.signature, "CHNK", 4) != 0){
-            fprintf(stderr, "Invalid Signature at the 0x%lX", current_chnk_pos);
+            fprintf(stderr, "Invalid Signature at the 0x%lX\n", current_chnk_pos);
             break;
         }
 
@@ -91,7 +164,7 @@ int decompress_chnk(const char *input_path, const char *output_path){
         size_t written = tinfl_decompress_mem_to_mem(decomp_buf, header.decompressed_size, comp_buf, header.compressed_size, 0);
 
         if(written == TINFL_DECOMPRESS_MEM_TO_MEM_FAILED || written != header.decompressed_size){
-            fprintf(stderr, "Failed to decompress. Error code: %lld\n", written);
+            fprintf(stderr, "Failed to decompress. Error code: %zu\n", written);
             free(comp_buf);
             free(decomp_buf);
             break;
@@ -104,6 +177,7 @@ int decompress_chnk(const char *input_path, const char *output_path){
 
         if(header.next_chunk_dist == 0xFFFFFFFF){
             printf("End of the archive reached\n");
+            result = 0;
             break;
         }
 
@@ -113,80 +187,67 @@ int decompress_chnk(const char *input_path, const char *output_path){
     fclose(file);
     fclose(output);
 
-    return 0;
+    return result;
 
 }
 
+unsigned char *load_file(const char *path, long *size)
+{
+    FILE *f = fopen(path, "rb");
+    if (!f) return NULL;
+
+    fseek(f, 0, SEEK_END);
+    *size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (*size < 0) { fclose(f); return NULL; }      // ftell failed
+
+    unsigned char *buf = malloc(*size ? *size : 1);
+    if (buf && fread(buf, 1, *size, f) != (size_t)*size) {
+        free(buf);                                  // could not read the whole file
+        buf = NULL;
+    }
+    fclose(f);
+    return buf;
+}
+
+
 int recompress_chnk(const char *input_path, const char *output_path){
-    FILE *file = fopen (input_path, "rb");
-    if(!file){
-        printf("Failed to open the archive\n");
-        return -1;
-    }
-
-    FILE *output = fopen(output_path, "wb");
-    if(!output){
-        printf("Failed to write the output archive\n");
-        fclose(file);
-        return -1;
-    }
-
+    int result = -1;            // becomes 0 only when everything was written
+    FILE *output = NULL;
+    unsigned char **comp = NULL;
+    size_t *comp_size = NULL;
+    uint32_t *slot = NULL;
+    unsigned int count = 0;
     CHNKHeader header;
-    unsigned long int current_bytes_written = 0;
-    unsigned int pos = 0;
 
-    fseek(file, 0, SEEK_END);
-    long size = ftell(file);
-    fseek(file, 0, SEEK_SET);
-
-    if(size < 0){
-        fprintf(stderr, "Failed to read the file\n");
-        fclose(file);
-        fclose(output);
-        return -1;
+    long size = 0;
+    unsigned char *buffer = load_file(input_path, &size);
+    if(!buffer || size <= 0){
+        fprintf(stderr, "Failed to read the input file\n");
+        goto cleanup;
     }
 
-    unsigned char *buffer = malloc(size);
-
-    if(!buffer){
-        fprintf(stderr, "Out of memory\n");
-        fclose(file);
-        fclose(output);
-        return -1;
+    output = fopen(output_path, "wb");
+    if(!output){
+        fprintf(stderr, "Failed to write the output archive\n");
+        goto cleanup;
     }
 
-    fread(buffer, 1, size, file);
+    count = (size + 0x7FFFF) / 0x80000;
 
-    unsigned int count = (size + 0x7FFFF) / 0x80000;
-
-    unsigned char **comp = malloc(count * sizeof *comp);
-    if(!comp){
+    comp = calloc(count, sizeof *comp);
+    comp_size = malloc(count * sizeof *comp_size);
+    slot = malloc(count * sizeof *slot);
+    if(!comp || !comp_size || !slot){
         fprintf(stderr, "Out of memory\n");
-        fclose(file);
-        fclose(output);
-        return -1;
-    }
-
-    size_t *comp_size = malloc(count * sizeof *comp_size);
-        if(!comp_size){
-        fprintf(stderr, "Out of memory\n");
-        fclose(file);
-        fclose(output);
-        return -1;
-    }
-    uint32_t *slot = malloc(count * sizeof *slot);
-        if(!slot){
-        fprintf(stderr, "Out of memory\n");
-        fclose(file);
-        fclose(output);
-        return -1;
+        goto cleanup;
     }
 
     for(unsigned int i = 0; i < count; i++){
         unsigned char *src = buffer + i * 0x80000;
 
         size_t piece = size - i * 0x80000;
-        
+
         if(piece > 0x80000){
             piece = 0x80000;
         }
@@ -194,7 +255,7 @@ int recompress_chnk(const char *input_path, const char *output_path){
 
         if(comp[i] == NULL){
             fprintf(stderr,"Compression Failed\n");
-            return -1;
+            goto cleanup;
         }
         slot[i] = (0x80 + comp_size[i] + 0x7FF) & ~0x7FF;
 
@@ -233,31 +294,55 @@ int recompress_chnk(const char *input_path, const char *output_path){
         for (size_t j = 0; j < pad; j++){
             fputc(0, output);
         }
-            
-       mz_free(comp[i]);
     }
+    result = 0;
 
+cleanup:
+
+    if(comp){
+        for(unsigned int i = 0; i < count; i++){
+            mz_free(comp[i]);
+        }
+    }
     free(slot);
     free(comp_size);
     free(comp);
     free(buffer);
-    fclose(output);
-    fclose(file);
-    return -1;
+    if(output){
+        fclose(output);
+    }
+    return result;
+}
+
+static void usage(const char *prog){
+    fprintf(stderr,
+        "use: %s d <input.xen> <output>     decompress a CHNK file\n"
+        "     %s c <input> <output.xen>     compress a file to CHNK\n"
+        "     %s l <cas_pieces.pak.xen>     list an archive index\n",
+        prog, prog, prog);
 }
 
 int main(int argc, char **argv){
 
-    if (argc != 4) {
-        fprintf(stderr, "use: %s d|c <input> <output>\n", argv[0]);
+    if(argc < 2){
+        usage(argv[0]);
         return 1;
     }
-    if (strcmp(argv[1], "d") == 0)
-        return decompress_chnk(argv[2], argv[3]) == 0 ? 0 : 1;
-    if (strcmp(argv[1], "c") == 0)
-        return recompress_chnk(argv[2], argv[3]) == 0 ? 0 : 1;
 
-    fprintf(stderr, "unknown mode '%s' (use d or c)\n", argv[1]);
+    const char *keys = getenv("WOR_KEYS");
+    load_keys(keys ? keys : "ghwor_keys.txt");
+
+    if (strcmp(argv[1], "d") == 0 && argc == 4)
+        return decompress_chnk(argv[2], argv[3]) == 0 ? 0 : 1;
+    if (strcmp(argv[1], "c") == 0 && argc == 4)
+        return recompress_chnk(argv[2], argv[3]) == 0 ? 0 : 1;
+    if (strcmp(argv[1], "l") == 0 && argc == 3){
+
+        fprintf(stderr, "list: not implemented yet\n");
+        return 1;
+    }
+
+    usage(argv[0]);
     return 1;
 }
 
