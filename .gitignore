@@ -16,3 +16,4 @@ wor_build/
 __pycache__/
 *.pyc
 blender
+ghwor_keys.txt
