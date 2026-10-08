@@ -14,7 +14,7 @@ git clone https://github.com/KleitonMustaine/Guitar-Hero-WoR-Character-conversio
 Requires gcc. From the `repacker` folder:
 
 ```bash
-gcc -O2 -Wall -IIncludes UNCHNK.c Includes/miniz.c -o unchnk.exe
+gcc -O2 -Wall -I Includes UNCHNK.c libs/common.c libs/chnk.c libs/archive.c Includes/miniz.c -o unchnk.exe
 ```
 
 ### File names (optional)
