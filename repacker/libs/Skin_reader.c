@@ -140,7 +140,6 @@ int read_smesh(const unsigned char *data, size_t off_smesh, size_t off_cgeom, ui
     return 0;
 }
 
-
 void dump_skin(const char *path){
     long size = 0;
     unsigned char *data = load_file(path, &size);
