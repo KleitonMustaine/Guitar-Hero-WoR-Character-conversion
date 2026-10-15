@@ -2,7 +2,6 @@
 
 #include "common.h"
 
-
 typedef struct{
     unsigned char *data;
     long size;
@@ -47,7 +46,7 @@ typedef struct {
     uint8_t single_bone;
 } Mesh;
 
-
 void dump_skin(const char *path);
 void read_materials(const unsigned char *data, size_t core, size_t file_size);
-void read_scene(const unsigned char *data, size_t scene_offset, size_t file_size);
+void read_scene(const unsigned char *data, size_t expected_offset, size_t file_size);
+void read_sector(const unsigned char *data, size_t off_sector, size_t off_cgeom, uint32_t sector_count, size_t file_size);
