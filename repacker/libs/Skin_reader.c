@@ -44,6 +44,19 @@ void read_materials(const unsigned char *data, size_t core, size_t file_size){
 
         mat_offset += (m.size + 15) & ~15; //align to 16 bytes
     }
+
+    size_t expected_offset = core + matlist_size;
+
+    if(expected_offset + 8 <= file_size){
+        uint32_t magic = be32(data + expected_offset);
+        if(magic == 0xBABEFACE){
+            uint32_t pad = be32(data + expected_offset + 4);
+            expected_offset += 8 + pad - + 4+4;
+        }else{
+            expected_offset = (expected_offset + 127) & ~127;
+        }
+    }
+    printf("Scene starts at offset 0x%zX\n", expected_offset);
 }
 
 void dump_skin(const char *path){
