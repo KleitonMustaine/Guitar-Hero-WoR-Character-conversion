@@ -49,3 +49,8 @@ void put_be32(unsigned char *p, uint32_t v){
     p[2] = v >> 8;
     p[3] = v;
 }
+
+uint16_t be16(const unsigned char *p){
+    return (uint16_t)p[0] << 8 |
+           (uint16_t)p[1];
+}
