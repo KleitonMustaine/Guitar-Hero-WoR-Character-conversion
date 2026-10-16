@@ -54,3 +54,24 @@ uint16_t be16(const unsigned char *p){
     return (uint16_t)p[0] << 8 |
            (uint16_t)p[1];
 }
+
+
+float be_float_local(const unsigned char *buf) {
+    uint32_t temp = be32(buf);
+    float f;
+    uint32_t b = ((temp >> 24) & 0x000000FF) |
+                  ((temp >> 8)  & 0x0000FF00) |
+                  ((temp << 8)  & 0x00FF0000) |
+                  ((temp << 24) & 0xFF000000);
+    *((uint32_t*)&f) = b;
+    return f;
+}
+void unpack_normal_func(uint32_t p, float *nx, float *ny, float *nz) {
+    uint32_t x = p & 0x7FF;
+    uint32_t y = (p >> 11) & 0x7FF;
+    uint32_t z = (p >> 22) & 0x3FF;
+
+    *nx = (x & 0x400 ? (int32_t)x - 0x800 : (int32_t)x) / 1023.0f;
+    *ny = (y & 0x400 ? (int32_t)y - 0x800 : (int32_t)y) / 1023.0f;
+    *nz = (z & 0x200 ? (int32_t)z - 0x400 : (int32_t)z) / 511.0f;
+}

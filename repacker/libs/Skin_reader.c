@@ -1,7 +1,8 @@
 #include "common.h"
 #include "skin.h"
+#include "geometry.h"
 
-void read_materials(const unsigned char *data, size_t core, size_t file_size){
+void read_materials(const unsigned char *data, size_t core, size_t file_size, int is_wor) {
 
     if(core + 12 > file_size){
         fprintf(stderr, "Skin file too small for materials: core=0x%zX, size=%zu\n", core, file_size);
@@ -57,10 +58,10 @@ void read_materials(const unsigned char *data, size_t core, size_t file_size){
         }
     }
     printf("Scene starts at offset 0x%zX\n", expected_offset);
-    read_scene(data, expected_offset, file_size);
+    read_scene(data, expected_offset, file_size, is_wor);
 }
 
-void read_scene(const unsigned char *data, size_t expected_offset, size_t file_size) {
+void read_scene(const unsigned char *data, size_t expected_offset, size_t file_size, int is_wor) {
     if (expected_offset + 0x80 > file_size) {
         fprintf(stderr, "Error: File too small for scene header.\n");
         return;
@@ -87,8 +88,7 @@ void read_scene(const unsigned char *data, size_t expected_offset, size_t file_s
     printf("   -> off_smesh  = 0x%zX\n", off_smesh);
 
     read_sector(data, off_sector, off_cgeom, sector_count, file_size);
-
-    read_smesh(data, off_smesh, off_cgeom, smesh_count, file_size);
+    read_smesh(data, off_smesh, off_cgeom, smesh_count, file_size, is_wor, expected_offset);
 }
 
 void read_sector(const unsigned char *data, size_t off_sector, size_t off_cgeom, uint32_t sector_count, size_t file_size) {
@@ -116,14 +116,24 @@ void read_sector(const unsigned char *data, size_t off_sector, size_t off_cgeom,
     }
 }
 
-int read_smesh(const unsigned char *data, size_t off_smesh, size_t off_cgeom, uint32_t smesh_count, size_t file_size) {
+int read_smesh(const unsigned char *data, size_t off_smesh, size_t off_cgeom, uint32_t smesh_count, size_t file_size, int is_wor, size_t expected_offset) {
     printf("reading Mesh (Total: %d) ---\n", smesh_count);
 
     for (uint32_t i = 0; i < smesh_count; i++) {
 
-        size_t smesh_off = off_smesh + (i * 112);
+        size_t smesh_off;
+        size_t msize;
 
-        if (smesh_off + 112 > file_size) {
+        if(is_wor == 1){
+            smesh_off = off_smesh + (i * 144); // WoR format
+            msize = 144;
+        }
+        if(is_wor == 0){
+            smesh_off = off_smesh + (i * 112); // WT format
+            msize = 112;
+        }
+
+        if (smesh_off + msize > file_size) {
             fprintf(stderr, "Error: End of file while reading mesh %d\n", i);
             return -1;
         }
@@ -134,8 +144,51 @@ int read_smesh(const unsigned char *data, size_t off_smesh, size_t off_cgeom, ui
         uint16_t vertex_count = be16(data + smesh_off + 0x52);
         uint32_t face_type   = be32(data + smesh_off + 0x6C);
 
+        size_t off_face = 0;
+        int off_vert_rel = -1;
+        
+
+        if(is_wor == 1){
+            uint32_t rel_face = be32(data + smesh_off + 0x2C);
+            
+            off_face = expected_offset + rel_face;
+
+            int32_t vs = (int32_t)be32(data + smesh_off + 0x70);
+            off_vert_rel = vs;
+        }else{
+            uint32_t rel_face = be32(data + smesh_off + 0x60);
+            off_face = expected_offset + rel_face;
+
+            int32_t vs = (int32_t)be32(data + smesh_off + 0x64);
+            off_vert_rel = vs;
+        }
         printf("-> MESH [%d] verts=%d, faces=%d, face_type=%d, material=0x%08X\n", i, vertex_count, face_count, face_type, material);
+
+        Vertex *verts = NULL;
+        int vert_count = 0;
+
+        read_mesh_vertices(data, expected_offset, off_vert_rel, is_wor, &verts, &vert_count);
+
+        if(vert_count > 0 && verts != NULL){
+            printf("   -> Read %d vertices\n", vert_count);
+            free(verts);
+        } else {
+            printf("   -> No vertices read\n");
+        }
+
+        Triangle *tris = NULL;
+        int tri_count = 0;
+        read_mesh_faces(data, off_face, face_count, face_type, &tris, &tri_count);
+
+        if(tri_count > 0 && tris != NULL){
+            printf("-> Read %d triangles\n", tri_count);
+            free(tris);
+        } else {
+            printf("-> No triangles read\n");
+        }
     }
+    free(verts);
+    free(tris);
 
     return 0;
 }
@@ -156,20 +209,23 @@ void dump_skin(const char *path){
     uint32_t dq_offset = be32(data);
     size_t core = 0;
     const char *format;
+    int is_wor = 0;
 
     if(data[0x20] == 0){
         fprintf(stderr, "Skin file is WoR format: %s\n", path);
         core = 0x80;
         format = "WoR";
+        is_wor = 1;
     } else {
         fprintf(stderr, "Skin file is not WoR format: %s\n", path);
         core = 0x20;
         format = "WT";
+        is_wor = 0;
     }
 
     printf("%s: %s, core=0x%zX, size=%ld bytes, dq_off=0x%X\n", path, format, core, size, dq_offset);
 
-    read_materials(data, core, size);
+    read_materials(data, core, size, is_wor);
 
     free(data);
 }

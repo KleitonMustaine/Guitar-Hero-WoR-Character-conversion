@@ -47,6 +47,7 @@ typedef struct {
 } Mesh;
 
 void dump_skin(const char *path);
-void read_materials(const unsigned char *data, size_t core, size_t file_size);
-void read_scene(const unsigned char *data, size_t expected_offset, size_t file_size);
+void read_materials(const unsigned char *data, size_t core, size_t file_size, int is_wor);
+void read_scene(const unsigned char *data, size_t expected_offset, size_t file_size, int is_wor);
 void read_sector(const unsigned char *data, size_t off_sector, size_t off_cgeom, uint32_t sector_count, size_t file_size);
+int read_smesh(const unsigned char *data, size_t off_smesh, size_t off_cgeom, uint32_t smesh_count, size_t file_size, int is_wor, size_t expected_offset);
