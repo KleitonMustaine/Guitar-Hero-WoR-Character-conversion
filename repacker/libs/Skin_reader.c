@@ -62,21 +62,21 @@ void read_materials(const unsigned char *data, size_t core, size_t file_size, in
 }
 
 void read_scene(const unsigned char *data, size_t expected_offset, size_t file_size, int is_wor) {
-    if (expected_offset + 0x80 > file_size) {
+    if (expected_offset + 0x90 > file_size) {
         fprintf(stderr, "Error: File too small for scene header.\n");
         return;
     }
     // Read scene header
-    uint16_t unk_a = be16(data + expected_offset + 0x40);
-    uint16_t unk_b = be16(data + expected_offset + 0x42);
+    uint16_t unk_a = be16(data + expected_offset + 0x30);
+    uint16_t unk_b = be16(data + expected_offset + 0x32);
 
     // Read counts and offsets
     uint32_t smesh_count = be32(data + expected_offset + 0x4C);
-    uint32_t sector_count = be32(data + expected_offset + 0x64);
-    
-    uint32_t rel_sector = be32(data + expected_offset + 0x68);
-    uint32_t rel_cgeom  = be32(data + expected_offset + 0x6C);
-    uint32_t rel_smesh  = be32(data + expected_offset + 0x74);
+    uint32_t sector_count = be32(data + expected_offset + 0x6C);
+
+    uint32_t rel_sector = be32(data + expected_offset + 0x70);
+    uint32_t rel_cgeom  = be32(data + expected_offset + 0x74);
+    uint32_t rel_smesh  = be32(data + expected_offset + 0x80);
 
     size_t off_sector = expected_offset + rel_sector;
     size_t off_cgeom  = expected_offset + rel_cgeom;
@@ -98,21 +98,32 @@ void read_sector(const unsigned char *data, size_t off_sector, size_t off_cgeom,
     size_t cgeom_curr = off_cgeom;
 
     for(uint32_t i = 0; i < sector_count; i++) {
-        if (sec_curr + 0x50 > file_size) {
+        if (sec_curr + 0x60 > file_size) {
             fprintf(stderr, "Error: File too small for sector %d header.\n", i);
             break;
         }
 
         Sector s;
-        s.checksum = be32(data + sec_curr);
-        s.flags = be32(data + sec_curr + 4);
-        s.first_mesh = be32(data + sec_curr + 8);
-        s.mesh_count = (int32_t)be32(data + sec_curr + 12);
+        s.checksum = be32(data + sec_curr + 4);
+        s.flags = be32(data + sec_curr + 8);
+        s.first_mesh = 0;
+        s.mesh_count = 0;
+
+        // the mesh range lives in the CGeom table; sectors with flag 0x20 have no CGeom entry
+        if (!(s.flags & 0x20)) {
+            if (cgeom_curr + 0x60 > file_size) {
+                fprintf(stderr, "Error: File too small for the CGeom of sector %d.\n", i);
+                break;
+            }
+            s.first_mesh = be32(data + cgeom_curr + 72);
+            s.mesh_count = (int32_t)be32(data + cgeom_curr + 76);
+            cgeom_curr += 0x60;
+        }
 
         printf("-> Sector [%d] checksum=0x%08X, flags=0x%08X, first_mesh=%d, mesh_count=%d\n", i, s.checksum, s.flags, s.first_mesh, s.mesh_count);
 
         // Move to the next sector
-        sec_curr += 0x80;
+        sec_curr += 0x60;
     }
 }
 
@@ -138,29 +149,36 @@ int read_smesh(const unsigned char *data, size_t off_smesh, size_t off_cgeom, ui
             return -1;
         }
 
-        uint32_t flags       = be32(data + smesh_off + 0x20);
-        uint32_t material    = be32(data + smesh_off + 0x38);
-        uint16_t face_count  = be16(data + smesh_off + 0x50);
-        uint16_t vertex_count = be16(data + smesh_off + 0x52);
-        uint32_t face_type   = be32(data + smesh_off + 0x6C);
+        uint32_t flags = be32(data + smesh_off + 0x24);
+        uint32_t material, face_type;
+        uint16_t face_count, vertex_count;
 
         size_t off_face = 0;
         int off_vert_rel = -1;
-        
+
 
         if(is_wor == 1){
-            uint32_t rel_face = be32(data + smesh_off + 0x2C);
-            
+            uint32_t rel_face = be32(data + smesh_off + 0x30);
+
             off_face = expected_offset + rel_face;
 
-            int32_t vs = (int32_t)be32(data + smesh_off + 0x70);
+            material     = be32(data + smesh_off + 0x50);
+            face_type    = be32(data + smesh_off + 0x64);
+            int32_t vs = (int32_t)be32(data + smesh_off + 0x68);
             off_vert_rel = vs;
+            face_count   = be16(data + smesh_off + 0x7A);
+            vertex_count = be16(data + smesh_off + 0x7C);
         }else{
-            uint32_t rel_face = be32(data + smesh_off + 0x60);
+            material     = be32(data + smesh_off + 0x34);
+            face_count   = be16(data + smesh_off + 0x44);
+            vertex_count = be16(data + smesh_off + 0x46);
+
+            uint32_t rel_face = be32(data + smesh_off + 0x58);
             off_face = expected_offset + rel_face;
 
-            int32_t vs = (int32_t)be32(data + smesh_off + 0x64);
+            int32_t vs = (int32_t)be32(data + smesh_off + 0x5C);
             off_vert_rel = vs;
+            face_type    = be32(data + smesh_off + 0x64);
         }
         printf("-> MESH [%d] verts=%d, faces=%d, face_type=%d, material=0x%08X\n", i, vertex_count, face_count, face_type, material);
 
@@ -187,8 +205,6 @@ int read_smesh(const unsigned char *data, size_t off_smesh, size_t off_cgeom, ui
             printf("-> No triangles read\n");
         }
     }
-    free(verts);
-    free(tris);
 
     return 0;
 }

@@ -26,7 +26,7 @@ int read_mesh_vertices(const unsigned char *data, size_t expected_offset, int of
     for(uint32_t g = 0; g < total_groups; g++){
         uint32_t n = be32(data + scan_cursor);
         scan_cursor += 16;
-        size_t stride = is_wor ? 32 : 48;
+        size_t stride = is_wor ? 32 : 56;
         scan_cursor += n * stride;
         total_vertices += n;
     }
@@ -69,7 +69,7 @@ int read_mesh_vertices(const unsigned char *data, size_t expected_offset, int of
             verts[v_idx].weights[0] = 1.0f;
             verts[v_idx].weights[1] = 0.0f;
             verts[v_idx].weights[2] = 0.0f;
-            cursor += 48;
+            cursor += 56;
             } else {
 
             verts[v_idx].x = be_float_local(data + cursor);

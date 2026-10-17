@@ -14,6 +14,7 @@ typedef uint32_t u32;
 
 uint32_t be32(const unsigned char *p);
 void put_be32(unsigned char *p, uint32_t v);
+uint16_t be16(const unsigned char *p);
 unsigned char *load_file(const char *path, long *size);
 float be_float_local(const unsigned char *buf);
 void unpack_normal_func(uint32_t p, float *nx, float *ny, float *nz);
