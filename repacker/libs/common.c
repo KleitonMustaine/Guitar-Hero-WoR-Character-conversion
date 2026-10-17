@@ -57,13 +57,9 @@ uint16_t be16(const unsigned char *p){
 
 
 float be_float_local(const unsigned char *buf) {
-    uint32_t temp = be32(buf);
+    uint32_t bits = be32(buf);      // be32 already puts the bytes in the right order
     float f;
-    uint32_t b = ((temp >> 24) & 0x000000FF) |
-                  ((temp >> 8)  & 0x0000FF00) |
-                  ((temp << 8)  & 0x00FF0000) |
-                  ((temp << 24) & 0xFF000000);
-    *((uint32_t*)&f) = b;
+    memcpy(&f, &bits, sizeof f);    // reinterpret the bits as a float
     return f;
 }
 void unpack_normal_func(uint32_t p, float *nx, float *ny, float *nz) {

@@ -19,7 +19,7 @@ void read_materials(const unsigned char *data, size_t core, size_t file_size, in
     size_t mat_offset = core + rel;
 
     for(uint16_t i = 0; i < count; i++){
-        if(mat_offset + 0x74 > file_size){
+        if(mat_offset + 0xAC > file_size){
             fprintf(stderr, "error at reading the material %d\n", i);
             break;
         }
@@ -38,10 +38,24 @@ void read_materials(const unsigned char *data, size_t core, size_t file_size, in
         m.ps_ptr      = be32(data + ptrs_offset + 20);
         m.tex_count   = be32(data + ptrs_offset + 24);
         m.tex_ptr     = be32(data + ptrs_offset + 28);
-        m.size        = be32(data + ptrs_offset + 40);
-        m.flags       = be32(data + ptrs_offset + 48);
+        m.size        = be32(data + ptrs_offset + 36);
+        m.flags       = be32(data + ptrs_offset + 44);
+        m.draw_order  = (int32_t)be32(data + ptrs_offset + 52);
+        m.blend       = be32(data + ptrs_offset + 56);
+        m.textures    = NULL;   // not stored yet, only printed below
 
-        printf("   -> MAT [%d] checksum=0x%08X, template=0x%08X, tex_count=%d, size=0x%X\n", i, m.checksum, m.template_id, m.tex_count, m.size);
+        printf("   -> MAT [%d] checksum=0x%08X, template=0x%08X, blend=%u, size=0x%X, tex=[", i, m.checksum, m.template_id, m.blend, m.size);
+
+        // the texture checksums are tex_count u32 values at mat_offset + tex_ptr
+        size_t tex_list = mat_offset + m.tex_ptr;
+        if(tex_list + (size_t)m.tex_count * 4 > file_size){
+            printf("out of file]\n");
+            break;
+        }
+        for(uint32_t t = 0; t < m.tex_count; t++){
+            printf(t ? " %08X" : "%08X", be32(data + tex_list + t * 4));
+        }
+        printf("]\n");
 
         mat_offset += (m.size + 15) & ~15; //align to 16 bytes
     }

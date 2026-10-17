@@ -66,9 +66,14 @@ int read_mesh_vertices(const unsigned char *data, size_t expected_offset, int of
             verts[v_idx].ny = be_float_local(data + cursor + 20);
             verts[v_idx].nz = be_float_local(data + cursor + 36);
 
-            verts[v_idx].weights[0] = 1.0f;
-            verts[v_idx].weights[1] = 0.0f;
-            verts[v_idx].weights[2] = 0.0f;
+            // two float weights after the three vec4s, same formula as the WoR branch
+            float a = be_float_local(data + cursor + 48);
+            float b = be_float_local(data + cursor + 52);
+            float d = 1.0f - (a + b);
+
+            verts[v_idx].weights[0] = a + d;
+            verts[v_idx].weights[1] = b + d;
+            verts[v_idx].weights[2] = d;
             cursor += 56;
             } else {
 
